@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package authz;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/ulbqb/protoc-gen-authz/authz";
+
+extend google.protobuf.MethodOptions {
+
+  AuthzRules rules = 50000;
+}
+
+message AuthzRules {
+  // If these rules conflict, the one with the smaller number will be applied.
+  // And if not set, access by all roles will be disallowed.
+  //
+  // allowed role list
+  repeated string allow = 1;
+
+  // disallowed role list
+  repeated string disallow = 2;
+
+  // if true, any role is allowed
+  bool any = 3;
+}
