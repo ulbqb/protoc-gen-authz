@@ -26,8 +26,11 @@ type AuthzRules struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// If these rules conflict, the one with the smaller number will be applied.
-	// And if not set, access by all roles will be disallowed.
+	// You can set "allow", "disallow", "any". "allow" is white list.
+	// "disallow" is block list. If you set true to "any", all roles are allowed.
+	// If multiple rules are set, the one with the highest priority will be set.
+	// The priority is "allow", "disallow", "any". Also, if no rule is set, all
+	// roles will be disallowed.
 	//
 	// allowed role list
 	Allow []string `protobuf:"bytes,1,rep,name=allow,proto3" json:"allow,omitempty"`
