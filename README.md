@@ -1,4 +1,4 @@
-# protoc-gen-authz(PGAz)
+# protoc-gen-authz (PGAz)
 
 PGAz is a protoc plugin to generate golang rpc authorization validators. 
 
@@ -38,12 +38,22 @@ You can set "allow", "disallow", "any". "allow" is white list. "disallow" is blo
 
 If multiple rules are set, the one with the highest priority will be set. The priority is "allow", "disallow", "any". Also, if no rule is set, all roles will be disallowed.
 
+## Install
+
+You can install PGAz with following command:
+
+```bash
+$ go install github.com/ulbqb/protoc-gen-authz@latest
+```
+
+## Generate
+
 You can generate an authz file with following command:
 
 ```bash
-protoc \
+$ protoc \
   -I . \
-  --go_out=":../generated" \
-  --authz_out="lang=go:../generated" \
+  --go_out=./generated \
+  --authz_out=./generated \
   example.proto
 ```
