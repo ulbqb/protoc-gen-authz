@@ -140,25 +140,25 @@ var {{ $service.Name }}AuthzRules = map[string]authz.AuthzRules {
 	},
 	{{- end }}
 }
-func Validate{{ $service.Name }}Role(methodName string, receivedRoles []string) bool {
+func Validate{{ $service.Name }}AuthzRole(methodName string, receivedRoles []string) bool {
 	rules, ok := {{ $service.Name }}AuthzRules[methodName]
 	if !ok {
 		return false
 	}
 
 	if len(rules.Allow) > 0 {
-		return hasIntersectionFor{{ $service.Name }}(receivedRoles, rules.Allow)
+		return hasIntersectionFor{{ $service.Name }}Authz(receivedRoles, rules.Allow)
 	}
 
 	if len(rules.Disallow) > 0 {
-		return !hasIntersectionFor{{ $service.Name }}(receivedRoles, rules.Disallow)
+		return !hasIntersectionFor{{ $service.Name }}Authz(receivedRoles, rules.Disallow)
 	}
 
 	return rules.Any
 }
 
 //https://installmd.com/c/105/go/intersection-of-two-slices
-func hasIntersectionFor{{ $service.Name }}(a, b []string) bool {
+func hasIntersectionFor{{ $service.Name }}Authz(a, b []string) bool {
 	// uses empty struct (0 bytes) for map values.
 	m := make(map[string]struct{}, len(b))
 
