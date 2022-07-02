@@ -1,6 +1,8 @@
 package module
 
 import (
+	"fmt"
+	"sort"
 	"text/template"
 
 	pgs "github.com/lyft/protoc-gen-star"
@@ -21,15 +23,15 @@ func Authz() *AuthzModule { return &AuthzModule{ModuleBase: &pgs.ModuleBase{}} }
 func (p *AuthzModule) InitContext(c pgs.BuildContext) {
 	p.ModuleBase.InitContext(c)
 	p.ctx = pgsgo.InitContext(c.Parameters())
-
 	tpl := template.New("authz").Funcs(map[string]interface{}{
-		"package":  p.ctx.PackageName,
-		"name":     p.ctx.Name,
-		"allow":    p.allow,
-		"disallow": p.disallow,
-		"any":      p.any,
+		"package":    p.ctx.PackageName,
+		"name":       p.ctx.Name,
+		"allow":      p.allow,
+		"disallow":   p.disallow,
+		"any":        p.any,
+		"roles":      p.roles,
+		"fullMethod": p.fullMethod,
 	})
-
 	p.tpl = template.Must(tpl.Parse(authzTpl))
 }
 
@@ -37,11 +39,9 @@ func (p *AuthzModule) InitContext(c pgs.BuildContext) {
 func (p *AuthzModule) Name() string { return "authz" }
 
 func (p *AuthzModule) Execute(targets map[string]pgs.File, pkgs map[string]pgs.Package) []pgs.Artifact {
-
 	for _, t := range targets {
 		p.generate(t)
 	}
-
 	return p.Artifacts()
 }
 
@@ -49,38 +49,40 @@ func (p *AuthzModule) generate(f pgs.File) {
 	if len(f.Services()) == 0 {
 		return
 	}
-
 	name := p.ctx.OutputPath(f).SetExt(".authz.go")
 	p.AddGeneratorTemplateFile(name.String(), p.tpl, f)
 }
 
-func (p *AuthzModule) allow(m pgs.Method) []string {
+func (p *AuthzModule) allow(m pgs.Method) []int {
 	opt := m.Descriptor().Options
-
 	ext := proto.GetExtension(opt, authz.E_Rules)
 	opts, ok := ext.(*authz.AuthzRules)
 	if ok && opts != nil && len(opts.Allow) > 0 {
-		return opts.Allow
+		allow := opts.Allow
+		sort.Strings(allow)
+		roles := p.roles(m.Service())
+		return roleIndexes(roles, allow)
 	} else {
-		return []string{}
+		return []int{}
 	}
 }
 
-func (p *AuthzModule) disallow(m pgs.Method) []string {
+func (p *AuthzModule) disallow(m pgs.Method) []int {
 	opt := m.Descriptor().Options
-
 	ext := proto.GetExtension(opt, authz.E_Rules)
 	opts, ok := ext.(*authz.AuthzRules)
 	if ok && opts != nil && len(opts.Disallow) > 0 {
-		return opts.Disallow
+		disallow := opts.Disallow
+		sort.Strings(disallow)
+		roles := p.roles(m.Service())
+		return roleIndexes(roles, disallow)
 	} else {
-		return []string{}
+		return []int{}
 	}
 }
 
 func (p *AuthzModule) any(m pgs.Method) bool {
 	opt := m.Descriptor().Options
-
 	ext := proto.GetExtension(opt, authz.E_Rules)
 	opts, ok := ext.(*authz.AuthzRules)
 	if ok && opts != nil {
@@ -90,24 +92,50 @@ func (p *AuthzModule) any(m pgs.Method) bool {
 	}
 }
 
-const authzTpl = `package {{ package . }}
+func (p *AuthzModule) roles(m pgs.Service) []string {
+	opt := m.Descriptor().Options
+	ext := proto.GetExtension(opt, authz.E_Roles)
+	roles, ok := ext.([]string)
+	if ok && roles != nil && len(roles) > 0 {
+		sort.Strings(roles)
+		return removeDuplicateValues(roles)
+	} else {
+		return []string{}
+	}
+}
+
+func (p *AuthzModule) fullMethod(m pgs.Method) string {
+	proto := m.Package().ProtoName().String()
+	service := m.Service().Name().String()
+	method := m.Name().String()
+	return fmt.Sprintf("/%s.%s/%s", proto, service, method)
+}
+
+const authzTpl = `{{ $package := . -}}
+package {{ package $package }}
 
 import "github.com/ulbqb/protoc-gen-authz/authz"
 
 {{ range .Services }}
 	{{ $service := . }}
-var {{ name $service }}GrantingRoles = map[string]authz.AuthzRules {
+var {{ name $service }}Roles = []string{
+	{{- range roles $service }}
+	"{{ . }}",
+	{{- end }}
+}
+
+var {{ name $service }}Rules = map[string]authz.AuthzRules {
 	{{- range $service.Methods }}
 		{{- $method := . }}
-	"{{ name $method }}": {
+	"{{ fullMethod $method }}": {
 		Allow: []string{
 		{{- range allow $method }}
-			"{{ . }}",
+			{{ name $service }}Roles[{{ . }}],
 		{{- end }}
 		},
 		Disallow: []string{
 		{{- range disallow $method }}
-			"{{ . }}",
+			{{ name $service }}Roles[{{ . }}],
 		{{- end }}
 		},
 		Any: {{ any $method }},
@@ -115,7 +143,7 @@ var {{ name $service }}GrantingRoles = map[string]authz.AuthzRules {
 	{{- end }}
 }
 func Validate{{ name $service }}Role(methodName string, receivedRoles []string) bool {
-	rules, ok := {{ name $service }}GrantingRoles[methodName]
+	rules, ok := {{ name $service }}Rules[methodName]
 	if !ok {
 		return false
 	}
