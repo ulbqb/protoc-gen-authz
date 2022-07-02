@@ -6,14 +6,20 @@ import "google/protobuf/descriptor.proto";
 
 option go_package = "github.com/ulbqb/protoc-gen-authz/authz";
 
-extend google.protobuf.MethodOptions {
+extend google.protobuf.ServiceOptions {
+  // authz roles list
+  repeated string roles = 51000;
+}
 
-  AuthzRules rules = 50000;
+extend google.protobuf.MethodOptions {
+  // authz rules
+  AuthzRules rules = 51001;
 }
 
 message AuthzRules {
-  // You can set "allow", "disallow", "any". "allow" is white list. 
-  // "disallow" is block list. If you set true to "any", all roles are allowed.
+  // You can set "allow", "disallow", "any". "allow" and "disallow" can be set
+  // to the role included in the roles list. "allow" is white list. "disallow"
+  // is black list. If you set true to "any", all roles are allowed.
   // If multiple rules are set, the one with the highest priority will be set.
   // The priority is "allow", "disallow", "any". Also, if no rule is set, all
   // roles will be disallowed.
