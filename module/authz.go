@@ -25,7 +25,6 @@ func (p *AuthzModule) InitContext(c pgs.BuildContext) {
 	p.ctx = pgsgo.InitContext(c.Parameters())
 	tpl := template.New("authz").Funcs(map[string]interface{}{
 		"package":    p.ctx.PackageName,
-		"name":       p.ctx.Name,
 		"allow":      p.allow,
 		"disallow":   p.disallow,
 		"any":        p.any,
@@ -98,7 +97,7 @@ func (p *AuthzModule) roles(m pgs.Service) []string {
 	roles, ok := ext.([]string)
 	if ok && roles != nil && len(roles) > 0 {
 		sort.Strings(roles)
-		return removeDuplicateValues(roles)
+		return removeDuplicateValuesOfSlice(roles)
 	} else {
 		return []string{}
 	}
@@ -111,56 +110,55 @@ func (p *AuthzModule) fullMethod(m pgs.Method) string {
 	return fmt.Sprintf("/%s.%s/%s", proto, service, method)
 }
 
-const authzTpl = `{{ $package := . -}}
-package {{ package $package }}
+const authzTpl = `package {{ package . }}
 
 import "github.com/ulbqb/protoc-gen-authz/authz"
 
 {{ range .Services }}
 	{{ $service := . }}
-var {{ name $service }}Roles = []string{
+var {{ $service.Name }}AuthzRoles = []string{
 	{{- range roles $service }}
 	"{{ . }}",
 	{{- end }}
 }
 
-var {{ name $service }}Rules = map[string]authz.AuthzRules {
+var {{ $service.Name }}AuthzRules = map[string]authz.AuthzRules {
 	{{- range $service.Methods }}
 		{{- $method := . }}
 	"{{ fullMethod $method }}": {
 		Allow: []string{
 		{{- range allow $method }}
-			{{ name $service }}Roles[{{ . }}],
+			{{ $service.Name }}AuthzRoles[{{ . }}],
 		{{- end }}
 		},
 		Disallow: []string{
 		{{- range disallow $method }}
-			{{ name $service }}Roles[{{ . }}],
+			{{ $service.Name }}AuthzRoles[{{ . }}],
 		{{- end }}
 		},
 		Any: {{ any $method }},
 	},
 	{{- end }}
 }
-func Validate{{ name $service }}Role(methodName string, receivedRoles []string) bool {
-	rules, ok := {{ name $service }}Rules[methodName]
+func Validate{{ $service.Name }}Role(methodName string, receivedRoles []string) bool {
+	rules, ok := {{ $service.Name }}AuthzRules[methodName]
 	if !ok {
 		return false
 	}
 
 	if len(rules.Allow) > 0 {
-		return hasIntersectionFor{{ name $service }}(receivedRoles, rules.Allow)
+		return hasIntersectionFor{{ $service.Name }}(receivedRoles, rules.Allow)
 	}
 
 	if len(rules.Disallow) > 0 {
-		return !hasIntersectionFor{{ name $service }}(receivedRoles, rules.Disallow)
+		return !hasIntersectionFor{{ $service.Name }}(receivedRoles, rules.Disallow)
 	}
 
 	return rules.Any
 }
 
 //https://installmd.com/c/105/go/intersection-of-two-slices
-func hasIntersectionFor{{ name $service }}(a, b []string) bool {
+func hasIntersectionFor{{ $service.Name }}(a, b []string) bool {
 	// uses empty struct (0 bytes) for map values.
 	m := make(map[string]struct{}, len(b))
 
