@@ -3,6 +3,7 @@ package module
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"text/template"
 
 	pgs "github.com/lyft/protoc-gen-star"
@@ -24,12 +25,13 @@ func (p *AuthzModule) InitContext(c pgs.BuildContext) {
 	p.ModuleBase.InitContext(c)
 	p.ctx = pgsgo.InitContext(c.Parameters())
 	tpl := template.New("authz").Funcs(map[string]interface{}{
-		"package":    p.ctx.PackageName,
-		"allow":      p.allow,
-		"disallow":   p.disallow,
-		"any":        p.any,
-		"roles":      p.roles,
-		"fullMethod": p.fullMethod,
+		"package":      p.ctx.PackageName,
+		"allow":        p.allow,
+		"disallow":     p.disallow,
+		"any":          p.any,
+		"roles":        p.roles,
+		"fullMethod":   p.fullMethod,
+		"snakeToCamel": p.snakeToCamel,
 	})
 	p.tpl = template.Must(tpl.Parse(authzTpl))
 }
@@ -110,15 +112,58 @@ func (p *AuthzModule) fullMethod(m pgs.Method) string {
 	return fmt.Sprintf("/%s.%s/%s", proto, service, method)
 }
 
+func (p *AuthzModule) snakeToCamel(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+
+	n := strings.Builder{}
+	n.Grow(len(s))
+	capNext := true
+	for i, v := range []byte(s) {
+		vIsCap := v >= 'A' && v <= 'Z'
+		vIsLow := v >= 'a' && v <= 'z'
+		if capNext {
+			if vIsLow {
+				v += 'A'
+				v -= 'a'
+			}
+		} else if i == 0 {
+			if vIsCap {
+				v += 'a'
+				v -= 'A'
+			}
+		}
+		if vIsCap || vIsLow {
+			n.WriteByte(v)
+			capNext = false
+		} else if vIsNum := v >= '0' && v <= '9'; vIsNum {
+			n.WriteByte(v)
+			capNext = true
+		} else {
+			capNext = v == '_'
+		}
+	}
+	return n.String()
+}
+
 const authzTpl = `package {{ package . }}
 
 import "github.com/ulbqb/protoc-gen-authz/authz"
 
+
 {{ range .Services }}
 	{{ $service := . }}
+const (
+	{{- range roles $service }}
+	{{ $service.Name }}AuthzRole_{{ snakeToCamel . }} = "{{ . }}"
+	{{- end }}
+)
+
 var {{ $service.Name }}AuthzRoles = []string{
 	{{- range roles $service }}
-	"{{ . }}",
+	{{ $service.Name }}AuthzRole_{{ snakeToCamel . }},
 	{{- end }}
 }
 
